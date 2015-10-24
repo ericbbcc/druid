@@ -539,6 +539,11 @@ public class DruidDataSource extends DruidAbstractDataSource
 
             if (this.jdbcUrl != null) {
                 this.jdbcUrl = this.jdbcUrl.trim();
+                /**
+                 * 解析下面的配置
+                 * jdbcUrl = jdbc:warp-jdbc:driver=driver:filters=filter1,filter2:name=name:imx=jmx
+                 * 将过滤器解析出来放入this.filters
+                 */
                 initFromWrapDriverUrl();
             }
 
@@ -550,6 +555,13 @@ public class DruidDataSource extends DruidAbstractDataSource
                 filter.init(this);
             }
 
+            /**
+             * 对于Mysql和Mariadb应用参数：cacheServerConfiguration
+             * 这个参数的解释是：
+             * 驱动程序是否应根据每条URL对HOW VARIABLES和SHOW COLLATION执行缓冲处理，
+             * SHOW VARIABLES和SHOW COLLATION都是查看MYSQL配置的命令
+             *
+             */
             if (JdbcConstants.MYSQL.equals(this.dbType) || //
                 JdbcConstants.MARIADB.equals(this.dbType)) {
                 boolean cacheServerConfigurationSet = false;
@@ -563,19 +575,26 @@ public class DruidDataSource extends DruidAbstractDataSource
                 }
             }
 
+            //最大连接数配置错误
             if (maxActive <= 0) {
                 throw new IllegalArgumentException("illegal maxActive " + maxActive);
             }
 
+            //最大连接数不能小于最小空闲数
             if (maxActive < minIdle) {
                 throw new IllegalArgumentException("illegal maxActive " + maxActive);
             }
 
+            //初始大小不能大于最大连接数
             if (getInitialSize() > maxActive) {
                 throw new IllegalArgumentException("illegal initialSize " + this.initialSize + ", maxActieve "
                                                    + maxActive);
             }
 
+            /**
+             * timeBetweenLogStatsMillis这个参数是用来设置日志记录统计信息的时间间隔，
+             * 不支持全局数据源统计方式
+             */
             if (timeBetweenLogStatsMillis > 0 && useGlobalDataSourceStat) {
                 throw new IllegalArgumentException("timeBetweenLogStatsMillis not support useGlobalDataSourceStat=true");
             }
@@ -584,6 +603,11 @@ public class DruidDataSource extends DruidAbstractDataSource
                 this.driverClass = driverClass.trim();
             }
 
+            /**
+             * druid.load.spifilter.skip这个参数可以设置跳过自定义过滤器
+             * 这里用户可以通过SPI机制添加过滤器，并且这个过滤器需要用AutoLoad进行注解，
+             * 发现过滤器后将过滤器添加到this.filters中
+             */
             initFromSPIServiceLoader();
 
             if (this.driver == null) {
@@ -591,6 +615,9 @@ public class DruidDataSource extends DruidAbstractDataSource
                     this.driverClass = JdbcUtils.getDriverClassName(this.jdbcUrl);
                 }
 
+                /**
+                 * 是否是在Mock，Druid支持Mock Driver
+                 */
                 if (MockDriver.class.getName().equals(driverClass)) {
                     driver = MockDriver.instance;
                 } else {
@@ -602,12 +629,34 @@ public class DruidDataSource extends DruidAbstractDataSource
                 }
             }
 
+            /**
+             * 对ORACLE喝DB2的支持情况进行检查
+             */
             initCheck();
 
+
+            /**
+             * 根据数据库类型设置ExceptionSorter
+             */
             initExceptionSorter();
+
+            /**
+             * 设置数据库连接检查器
+             */
             initValidConnectionChecker();
+
+
+            /**
+             * 检查validationQuery是否设置了，如：SELECT 1，
+             * 如果没有设置但是testOnBorrow、testOnReturn、testWhileIdle为true的时候这是错误的。
+             */
             validationQueryCheck();
 
+
+            /**
+             * 是否使用全局的数据源统计信息，如果为True且有多个数据源的情况下
+             * 这些数据源共享一个统计信息
+             */
             if (isUseGlobalDataSourceStat()) {
                 dataSourceStat = JdbcDataSourceStat.getGlobal();
                 if (dataSourceStat == null) {
